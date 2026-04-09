@@ -4,4 +4,4 @@ public class TextAdventure {
     }
 }
 //Test run
-//Test 2 Nate
+//Test 2 Nate check
