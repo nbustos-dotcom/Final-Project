@@ -67,7 +67,7 @@ public class Room {
 		return null;
 	}
 	
-	public List<String> getExitDirections(){
+	public List<String> getExitDirections() {
 		return directions;
 	}
 	
