@@ -1,3 +1,4 @@
+Author: Marilyn Stephen
 /**
  * Item represents an object the player can pick up, carry, or use.
  * This class stores item data only and contains no game or puzzle logic.
