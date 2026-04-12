@@ -1,7 +1,8 @@
 public class TextAdventure {
     public static void main(String[] args) {
-        System.out.println("Game starting...");
+        Game game = new Game();
+        game.startGame();
     }
 }
 //Test run
-//Test 2 Nate check
+//Test 2 Nate check1
