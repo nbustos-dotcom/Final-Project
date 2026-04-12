@@ -1,8 +1,8 @@
-// Brooklyn Carlton -- working rn I promise!!!
+// Brooklyn Carlton
 import java.util.ArrayList;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.FileReader;
+// import java.io.FileWriter;
+// import java.io.IOException;
+// import java.io.FileReader;
 
 public class Player {
     Room currentRoom = null;
@@ -30,27 +30,31 @@ public class Player {
         return currentRoom;
     }
 
-    public void save() {
-        try {
-            FileWriter writer = new FileWriter("save.txt");
-            writer.write(currentRoom.getName());
-            writer.write(",");
-            
-            for (Item currentItem : inventory) {
-                writer.write(currentItem.getName());
-                writer.write(",");
-            }
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public ArrayList<Item> getCurrentInventory() {
+        return inventory;
     }
 
-    public void load() {
-        try {
-            FileReader reader = new FileReader("save.txt");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+//     public void save() {
+//         try {
+//             FileWriter writer = new FileWriter("save.txt");
+//             writer.write(currentRoom.getName());
+//             writer.write(",");
+            
+//             for (Item currentItem : inventory) {
+//                 writer.write(currentItem.getName());
+//                 writer.write(",");
+//             }
+//             writer.close();
+//         } catch (IOException e) {
+//             e.printStackTrace();
+//         }
+//     }
+
+//     public void load() {
+//         try {
+//             FileReader reader = new FileReader("save.txt");
+//         } catch (IOException e) {
+//             e.printStackTrace();
+//         }
+//     }
 }
