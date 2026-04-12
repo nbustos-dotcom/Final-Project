@@ -1,7 +1,7 @@
 import java.util.ArrayList;
 import java.util.List;
 
-
+//Author: Marilyn Stephen
 /**
  * Room represents a location in the game.
  * A room contains a description, items, and exits to other rooms.
@@ -67,7 +67,7 @@ public class Room {
 		return null;
 	}
 	
-	public List<String> getExitDirections(){
+	public List<String> getExitDirections() {
 		return directions;
 	}
 	
