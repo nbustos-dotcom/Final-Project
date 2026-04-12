@@ -49,6 +49,8 @@ public class Player {
     public void load() {
         try {
             FileReader reader = new FileReader("save.txt");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }
