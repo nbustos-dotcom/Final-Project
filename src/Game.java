@@ -1,76 +1,226 @@
 // William Ingels
-import java.util.Scanner;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
 
 public class Game {
 
-    private Scanner input;
+    private Player player;
+    private boolean running;
 
-    // Current room
-    private Room currentRoom;
+    // Special input states
+    private boolean snakeQuestionActive;
+    private boolean deathChoiceActive;
 
-    // Room objects
+    // Prevent double room display
+    private boolean roomJustChanged;
+
+    // Rooms
     private Room darkCell;
     private Room redRoom;
     private Room whiteRoom;
     private Room blueRoom;
-    private Room nextRoom;
+    private Room coldDarkRoom;
     private Room greyRoom;
     private Room lobbyRoom;
     private Room lionRoom;
     private Room supplyCloset;
     private Room wireRoom;
+    private Room escapeRoom;
 
-    // Item objects
+    // Items
     private Item flashlight;
     private Item book;
-    private Item key;
+    private Item cellKey;
     private Item deadBody;
+    private Item cup;
+    private Item magnetChain;
+    private Item drainKey;
+    private Item hammer;
+    private Item knife;
+    private Item keycard;
+    private Item pliers;
+    private Item greenEscapeKey;
+    private Item crank;
 
-    // Game state
-    private boolean hasFlashlight = false;
-    private boolean hasKey = false;
-    private boolean running = true;
+    // Puzzle state
+    private boolean keyRevealed;
+    private boolean flashlightDead;
 
-    // White room puzzle state
-    private boolean hasCup = false;
-    private boolean cupFilled = false;
-    private boolean toiletFlushed = false;
-    private boolean tankOpened = false;
-    private boolean hasMagnetChain = false;
-    private boolean tubTurnedOn = false;
-    private boolean hasDrainKey = false;
+    private boolean toiletFlushed;
+    private boolean tankOpened;
+    private boolean cupFilled;
+    private boolean magnetRevealed;
+    private boolean bathtubChecked;
+    private boolean drainKeyRevealed;
 
-    // Blue room puzzle state
-    private boolean blueRoomEntered = false;
-    private boolean chestOpened = false;
-    private boolean hasHammer = false;
-    private boolean tankBroken = false;
-    private boolean hasCrank = false;
+    private boolean chestOpened;
+    private boolean blueFlooded;
+    private boolean crankTaken;
 
-    // Grey room state
-    private boolean riddlePassed = false;
-    private boolean scannerUnlocked = false;
+    private boolean greyDoorUnlocked;
 
-    // Lobby / lion / closet state
-    private boolean hasKnife = false;
-    private boolean knifeBroken = false;
-    private boolean hasLionKeycard = false;
-    private boolean hasPliers = false;
-    private boolean toolboxOpened = false;
-    private boolean greenMessageShown = false;
+    private boolean knifeBroken;
+    private boolean toolboxOpened;
+    private boolean keycardTaken;
+
+    private boolean bombStarted;
+    private boolean bombKeyRevealed;
+    private long bombEndTimeMillis;
+
+    private boolean won;
 
     public Game() {
-        input = new Scanner(System.in);
-        setUpGame();
+        setupWorld();
     }
 
-    // Creates rooms and items
-    private void setUpGame() {
+    public boolean isRunning() {
+        return running;
+    }
+
+    private void clearScreen() {
+        for (int i = 0; i < 45; i++) {
+            System.out.println();
+        }
+    }
+
+    public void startGame() {
+        clearScreen();
+        System.out.println("Welcome to the Escape Room Game!");
+        System.out.println("Type commands like GO, LOOK, GET, DROP, INVENTORY, SAVE, RESTORE, QUIT");
+        System.out.println("You can also use some special commands with USE.");
+        System.out.println();
+        showRoomOptions();
+    }
+
+    public void processCommand(String input) {
+        if (!running) {
+            return;
+        }
+
+        roomJustChanged = false;
+
+        if (input == null || input.trim().isEmpty()) {
+            clearScreen();
+            System.out.println("Type a command.");
+            System.out.println();
+            if (!deathChoiceActive && !snakeQuestionActive) {
+                showRoomOptions();
+            }
+            return;
+        }
+
+        if (deathChoiceActive) {
+            clearScreen();
+            handleDeathChoice(input.trim());
+            return;
+        }
+
+        checkBombTimer();
+        if (!running || deathChoiceActive) {
+            return;
+        }
+
+        input = input.trim();
+
+        if (snakeQuestionActive) {
+            clearScreen();
+            handleSnakeAnswer(input);
+            return;
+        }
+
+        clearScreen();
+
+        String[] parts = input.split("\\s+", 2);
+        String command = parts[0].toUpperCase();
+        String target = parts.length > 1 ? parts[1].trim() : "";
+
+        switch (command) {
+            case "LOOK":
+                handleLook(target);
+                break;
+            case "GO":
+                handleGo(target);
+                break;
+            case "GET":
+                handleGet(target);
+                break;
+            case "DROP":
+                handleDrop(target);
+                break;
+            case "INVENTORY":
+                showInventory();
+                break;
+            case "SAVE":
+                saveGame();
+                break;
+            case "RESTORE":
+                restoreGame();
+                return;
+            case "QUIT":
+                running = false;
+                System.out.println("Goodbye!");
+                return;
+            case "USE":
+                handleUse(target);
+                break;
+            default:
+                System.out.println("Unknown command.");
+                System.out.println("Try GO, LOOK, GET, DROP, INVENTORY, SAVE, RESTORE, USE, or QUIT.");
+                break;
+        }
+
+        if (running && !deathChoiceActive && !snakeQuestionActive && !won) {
+            System.out.println();
+            if (roomJustChanged) {
+                showRoomOptions();
+            } else {
+                showCommandListsOnly();
+            }
+        }
+    }
+
+    private void setupWorld() {
+        running = true;
+        won = false;
+        snakeQuestionActive = false;
+        deathChoiceActive = false;
+        roomJustChanged = false;
+
+        player = new Player();
+
+        keyRevealed = false;
+        flashlightDead = false;
+
+        toiletFlushed = false;
+        tankOpened = false;
+        cupFilled = false;
+        magnetRevealed = false;
+        bathtubChecked = false;
+        drainKeyRevealed = false;
+
+        chestOpened = false;
+        blueFlooded = false;
+        crankTaken = false;
+
+        greyDoorUnlocked = false;
+
+        knifeBroken = false;
+        toolboxOpened = false;
+        keycardTaken = false;
+
+        bombStarted = false;
+        bombKeyRevealed = false;
+        bombEndTimeMillis = 0L;
+
         darkCell = new Room(
                 "Dark Cell",
                 "You wake up in a dark prison cell. The air is cold and damp. " +
                 "There is a flashlight on the floor, an old book on a small table, " +
-                "a dead body in the corner, and a locked door with a keyhole."
+                "and a dead body in the corner near a locked door with a keyhole."
         );
 
         redRoom = new Room(
@@ -92,11 +242,11 @@ public class Game {
         blueRoom = new Room(
                 "Blue Room",
                 "The room is dark and blue. Once light fills it, you can see twelve decorated glass fish tanks " +
-                "full of sea life. In the center on the far side is a special fish tank with a strange metal object inside. " +
-                "In the right corner sits a small pirate chest with a keyhole."
+                "full of sea life. On the far side is a special fish tank with something strange inside. " +
+                "In the corner sits a small pirate chest."
         );
 
-        nextRoom = new Room(
+        coldDarkRoom = new Room(
                 "Cold Dark Room",
                 "A freezing darkness surrounds you."
         );
@@ -109,21 +259,20 @@ public class Game {
 
         lobbyRoom = new Room(
                 "Lobby",
-                "You step into a surprisingly nice lobby-looking room with a front desk, couches, chairs, and a skylight. " +
-                "Across the room is a door with an exit sign above it and a keycard slot next to it. " +
+                "You step into a nice lobby-looking room with a front desk, couches, chairs, and a skylight. " +
+                "Across the room is a door with an EXIT sign above it and a keycard slot next to it. " +
                 "To the right is a purple door. To the left is a simple wooden door."
         );
 
         lionRoom = new Room(
                 "Lion Room",
-                "You open the purple door and see a large cage with a gate. " +
-                "Inside is a massive lion, and behind it is a dead body. " +
-                "In the dead body's hand you can see a keycard."
+                "You open the purple door and see a large cage. Inside is a massive lion. " +
+                "Behind it is a dead body. In the body's hand you can see a keycard."
         );
 
         supplyCloset = new Room(
                 "Supply Closet",
-                "You open the simple wooden door and find a stuffed supply closet filled with cleaning supplies and tools. " +
+                "You open the wooden door and find a stuffed supply closet filled with cleaning supplies and tools. " +
                 "In one corner is a toolbox. On the wall near the door is a knife."
         );
 
@@ -131,1089 +280,1101 @@ public class Game {
                 "Wire Room",
                 "You enter a small room with a table and a door with a window. " +
                 "Looking through the window, you can see that this door leads to your escape. " +
-                "On the table is a mess of wires attached to some weird metal and a small LED screen."
+                "On the table is a mess of wires attached to weird metal and a small LED screen."
         );
 
-        flashlight = new Item(
-                "flashlight",
-                "A small flashlight. It still works.",
-                "tool"
+        escapeRoom = new Room(
+                "Outside",
+                "Fresh air hits your face. You made it out alive."
         );
 
-        book = new Item(
-                "book",
-                "An old dusty book. Something looks strange about it.",
-                "object"
-        );
+        // Exits
+        darkCell.addExit("door", redRoom);
 
-        key = new Item(
-                "key",
-                "A small metal key hidden inside the book.",
-                "key"
-        );
+        redRoom.addExit("white", whiteRoom);
+        redRoom.addExit("blue", blueRoom);
+        redRoom.addExit("cell", darkCell);
 
-        deadBody = new Item(
-                "dead body",
-                "A dead body lying in the corner. There is a nametag on it.",
-                "object"
-        );
+        whiteRoom.addExit("red", redRoom);
+        whiteRoom.addExit("back", redRoom);
 
+        blueRoom.addExit("red", redRoom);
+        blueRoom.addExit("back", redRoom);
+
+        greyRoom.addExit("back", redRoom);
+
+        lobbyRoom.addExit("purple", lionRoom);
+        lobbyRoom.addExit("wooden", supplyCloset);
+        lobbyRoom.addExit("back", greyRoom);
+
+        lionRoom.addExit("back", lobbyRoom);
+        supplyCloset.addExit("back", lobbyRoom);
+        wireRoom.addExit("back", lobbyRoom);
+
+        // Items
+        flashlight = new Item("flashlight", "A small flashlight. It still works.", "tool");
+        book = new Item("book", "An old dusty book. Something looks strange about it.", "object");
+        cellKey = new Item("key", "A small metal key hidden inside the book.", "key");
+        deadBody = new Item("dead body", "A dead body lying in the corner. There is a nametag on it.", "object");
+        cup = new Item("cup", "A plain cup from the sink.", "tool");
+        magnetChain = new Item("magnet chain", "A chain with a magnet attached.", "tool");
+        drainKey = new Item("drain key", "A key pulled from the bathtub drain.", "key");
+        hammer = new Item("hammer", "A sturdy hammer.", "tool");
+        knife = new Item("knife", "A sharp knife from the wall.", "weapon");
+        keycard = new Item("keycard", "A keycard taken from the dead body behind the lion.", "keycard");
+        pliers = new Item("pliers", "A pair of pliers from the toolbox.", "tool");
+        greenEscapeKey = new Item("green key", "A green key taken from the dead body.", "key");
+        crank = new Item("crank", "A crank handle from the fish tank.", "tool");
+
+        // Starting room items
         darkCell.addItem(flashlight);
         darkCell.addItem(book);
         darkCell.addItem(deadBody);
+        whiteRoom.addItem(cup);
+        supplyCloset.addItem(knife);
 
-        currentRoom = darkCell;
+        player.setCurrentRoom(darkCell);
     }
 
-    private void clearScreen() {
-        for (int i = 0; i < 40; i++) {
-            System.out.println();
-        }
-    }
+    private void handleLook(String target) {
+        Room room = player.getCurrentRoom();
 
-    private void pause() {
-        System.out.println("\nPress Enter to continue...");
-        input.nextLine();
-    }
-
-    private void resetGame() {
-        hasFlashlight = false;
-        hasKey = false;
-        running = true;
-
-        hasCup = false;
-        cupFilled = false;
-        toiletFlushed = false;
-        tankOpened = false;
-        hasMagnetChain = false;
-        tubTurnedOn = false;
-        hasDrainKey = false;
-
-        blueRoomEntered = false;
-        chestOpened = false;
-        hasHammer = false;
-        tankBroken = false;
-        hasCrank = false;
-
-        riddlePassed = false;
-        scannerUnlocked = false;
-
-        hasKnife = false;
-        knifeBroken = false;
-        hasLionKeycard = false;
-        hasPliers = false;
-        toolboxOpened = false;
-        greenMessageShown = false;
-
-        setUpGame();
-    }
-
-    public void startGame() {
-        clearScreen();
-        System.out.println("=== ESCAPE ROOM ===");
-        System.out.println("1. New Game");
-        System.out.println("2. Load Save");
-        System.out.print("Choose an option: ");
-
-        String choice = input.nextLine();
-
-        clearScreen();
-
-        if (choice.equals("2")) {
-            System.out.println("Load save is not ready yet.");
-            System.out.println("Starting a new game instead...");
-            pause();
+        if (target.isEmpty()) {
+            showRoomOptions();
+            return;
         }
 
-        firstRoom();
+        String t = target.toLowerCase();
+
+        if (room == darkCell) {
+            if (t.equals("book")) {
+                System.out.println("You open the old book and look through the pages.");
+                if (!keyRevealed) {
+                    keyRevealed = true;
+                    darkCell.addItem(cellKey);
+                    System.out.println("Inside the book, you find a small hidden key.");
+                } else {
+                    System.out.println("There is nothing else inside the book.");
+                }
+                return;
+            }
+
+            if (t.equals("dead body") || t.equals("body")) {
+                System.out.println("You look at the dead body more closely.");
+                System.out.println("The nametag says: Mr. Green.");
+
+                if (bombStarted && !bombKeyRevealed) {
+                    bombKeyRevealed = true;
+                    darkCell.addItem(greenEscapeKey);
+                    System.out.println("Tucked into one of its stiff hands is a green key.");
+                }
+                return;
+            }
+
+            if (t.equals("door")) {
+                if (hasItem("key")) {
+                    System.out.println("The cell door is locked, but you have a key that might open it.");
+                } else {
+                    System.out.println("The cell door is locked. It has a keyhole.");
+                }
+                return;
+            }
+        }
+
+        if (room == redRoom) {
+            if (t.equals("walls") || t.equals("wall") || t.equals("floor")) {
+                System.out.println("The padded walls and floor make wet, mushy noises.");
+                System.out.println("A thick red liquid slowly oozes out of them.");
+                return;
+            }
+
+            if (t.equals("wooden door") || t.equals("door")) {
+                if (crankTaken) {
+                    System.out.println("The dark wooden door has a square crank hole. You have the crank.");
+                } else {
+                    System.out.println("The dark wooden door is locked and has a square crank hole.");
+                }
+                return;
+            }
+        }
+
+        if (room == whiteRoom) {
+            if (t.equals("sink")) {
+                System.out.println("The sink is spotless. A plain cup sits near it.");
+                return;
+            }
+
+            if (t.equals("toilet")) {
+                System.out.println("The toilet is perfectly clean.");
+                if (toiletFlushed) {
+                    System.out.println("The tank rattled when you flushed it.");
+                }
+                return;
+            }
+
+            if (t.equals("tank")) {
+                if (!toiletFlushed) {
+                    System.out.println("The toilet tank looks normal. Maybe try flushing first.");
+                } else if (!tankOpened) {
+                    System.out.println("The tank rattled when flushed. You could try using the tank.");
+                } else {
+                    System.out.println("Inside the tank you can see a hollow tube.");
+                }
+                return;
+            }
+
+            if (t.equals("bathtub") || t.equals("tub")) {
+                System.out.println("The bathtub is perfectly clean.");
+                if (bathtubChecked) {
+                    System.out.println("The water drains slowly, like something is stuck in the drain.");
+                }
+                return;
+            }
+        }
+
+        if (room == blueRoom) {
+            if (t.equals("fish tank") || t.equals("tank")) {
+                System.out.println("Inside the special fish tank you can see a crank handle.");
+                System.out.println("It looks like it fits the wooden door in the red room.");
+                if (hasItem("hammer")) {
+                    System.out.println("You might be able to break the glass.");
+                }
+                return;
+            }
+
+            if (t.equals("chest") || t.equals("pirate chest")) {
+                if (!chestOpened) {
+                    System.out.println("The pirate chest is locked.");
+                } else {
+                    System.out.println("The chest is open.");
+                }
+                return;
+            }
+        }
+
+        if (room == coldDarkRoom) {
+            System.out.println("It is too dark to see anything.");
+            return;
+        }
+
+        if (room == greyRoom) {
+            if (t.equals("hole")) {
+                System.out.println("It is a giant dark hole. You cannot see the bottom.");
+                return;
+            }
+
+            if (t.equals("metal door") || t.equals("door")) {
+                if (greyDoorUnlocked) {
+                    System.out.println("The metal door is unlocked.");
+                } else {
+                    System.out.println("The metal door is locked. There is a hand scanner beside it.");
+                }
+                return;
+            }
+
+            if (t.equals("scanner")) {
+                System.out.println("A hand scanner sits beside the metal door.");
+                return;
+            }
+        }
+
+        if (room == lobbyRoom) {
+            if (t.equals("front desk")) {
+                System.out.println("The front desk looks neat, but there is nothing useful there.");
+                return;
+            }
+
+            if (t.equals("couches") || t.equals("chairs") || t.equals("couches and chairs")) {
+                System.out.println("The couches and chairs look comfortable, but nothing useful is hidden there.");
+                return;
+            }
+
+            if (t.equals("exit door") || t.equals("door")) {
+                if (hasItem("keycard")) {
+                    System.out.println("The exit-sign door has a keycard slot. You have a keycard.");
+                } else {
+                    System.out.println("The exit-sign door has a keycard slot. You need a keycard.");
+                }
+                return;
+            }
+        }
+
+        if (room == lionRoom) {
+            if (t.equals("lion") || t.equals("cage") || t.equals("lion cage")) {
+                System.out.println("A massive lion paces inside the cage.");
+                System.out.println("Behind it is a dead body with a keycard in its hand.");
+                return;
+            }
+        }
+
+        if (room == supplyCloset) {
+            if (t.equals("toolbox")) {
+                System.out.println("You open the toolbox.");
+                if (!toolboxOpened) {
+                    toolboxOpened = true;
+                    supplyCloset.addItem(pliers);
+                    System.out.println("Inside you find a pair of pliers.");
+                } else {
+                    System.out.println("Inside is a pair of pliers.");
+                }
+                return;
+            }
+
+            if (t.equals("knife")) {
+                System.out.println("A knife hangs on the wall near the door.");
+                return;
+            }
+        }
+
+        if (room == wireRoom) {
+            if (t.equals("table") || t.equals("wires") || t.equals("wire table")) {
+                System.out.println("There is a mess of wires attached to weird metal and a small LED screen.");
+                if (bombStarted) {
+                    System.out.println("The screen says: \"The key is green\"");
+                    System.out.println("You need to hurry.");
+                }
+                return;
+            }
+
+            if (t.equals("escape door") || t.equals("door") || t.equals("window")) {
+                System.out.println("Looking through the window, you can see this leads to your escape.");
+                if (hasItem("green key")) {
+                    System.out.println("You now have the right key for it.");
+                } else {
+                    System.out.println("It is still locked.");
+                }
+                return;
+            }
+        }
+
+        Item item = findItemInInventory(target);
+        if (item != null) {
+            System.out.println(item.getDescription());
+            return;
+        }
+
+        System.out.println("You do not see anything special about that.");
     }
 
-    // ---------------- FIRST ROOM ----------------
-    private void firstRoom() {
-        while (running && currentRoom == darkCell) {
-            clearScreen();
+    private void handleGo(String target) {
+        if (target.isEmpty()) {
+            System.out.println("Go where?");
+            return;
+        }
 
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
+        Room room = player.getCurrentRoom();
+        String t = target.toLowerCase();
 
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Look at the flashlight");
-            System.out.println("2. Check the book");
-            System.out.println("3. Check the dead body");
-            System.out.println("4. Check the door");
-            System.out.println("5. Quit");
+        if (room == darkCell && t.equals("door")) {
+            if (hasItem("key")) {
+                player.setCurrentRoom(redRoom);
+                roomJustChanged = true;
+            } else {
+                System.out.println("The door is locked.");
+            }
+            return;
+        }
 
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
+        if (room == redRoom && (t.equals("wooden") || t.equals("wooden door") || t.equals("door"))) {
+            if (crankTaken) {
+                player.setCurrentRoom(coldDarkRoom);
+                roomJustChanged = true;
+                System.out.println("You place the crank into the square hole and turn it.");
+                System.out.println("The wooden door opens.");
+                enterSnakeRoom();
+            } else {
+                System.out.println("The wooden door is locked. It needs a crank.");
+            }
+            return;
+        }
 
-            if (choice.equals("1")) {
-                lookAtFlashlight();
-            } else if (choice.equals("2")) {
-                checkBook();
-            } else if (choice.equals("3")) {
-                checkDeadBody();
-            } else if (choice.equals("4")) {
-                checkCellDoor();
-            } else if (choice.equals("5")) {
-                clearScreen();
-                System.out.println("Game ended.");
+        if (room == greyRoom && (t.equals("metal") || t.equals("metal door") || t.equals("door"))) {
+            if (greyDoorUnlocked) {
+                player.setCurrentRoom(lobbyRoom);
+                roomJustChanged = true;
+            } else {
+                System.out.println("The metal door is locked.");
+            }
+            return;
+        }
+
+        if (room == lobbyRoom && (t.equals("exit") || t.equals("exit door") || t.equals("door"))) {
+            if (hasItem("keycard")) {
+                player.setCurrentRoom(wireRoom);
+                roomJustChanged = true;
+            } else {
+                System.out.println("The exit-sign door needs a keycard.");
+            }
+            return;
+        }
+
+        if (room == lionRoom && (t.equals("cage") || t.equals("lion cage"))) {
+            enterLionCage();
+            return;
+        }
+
+        if (room == wireRoom && (t.equals("escape") || t.equals("escape door") || t.equals("door"))) {
+            if (!bombStarted) {
+                System.out.println("The escape door is still locked.");
+                return;
+            }
+
+            if (hasItem("green key")) {
+                player.setCurrentRoom(escapeRoom);
+                won = true;
                 running = false;
+                System.out.println("You unlock the final door with the green key.");
+                System.out.println(escapeRoom.getDescription());
+                System.out.println("You escape just in time. You win!");
             } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
+                System.out.println("You need the green key first.");
             }
-        }
-    }
-
-    private void lookAtFlashlight() {
-        clearScreen();
-
-        if (!hasFlashlight) {
-            System.out.println("You pick up the flashlight. It may help you see better.");
-            hasFlashlight = true;
-            currentRoom.removeitem("flashlight");
-        } else {
-            System.out.println("You already picked up the flashlight.");
-        }
-
-        pause();
-    }
-
-    private void checkBook() {
-        clearScreen();
-        System.out.println("You open the old book and look through the pages.");
-
-        if (!hasKey) {
-            System.out.println("Inside the book, you find a small hidden key.");
-            hasKey = true;
-        } else {
-            System.out.println("There is nothing else inside the book.");
-        }
-
-        pause();
-    }
-
-    private void checkDeadBody() {
-        clearScreen();
-        System.out.println("You look at the dead body more closely.");
-        System.out.println("The nametag says: Mr. Green.");
-        pause();
-    }
-
-    private void checkCellDoor() {
-        clearScreen();
-
-        if (hasKey) {
-            System.out.println("You put the key into the keyhole and unlock the door.");
-            System.out.println("The door opens with a slow creak.");
-            System.out.println("Beyond it is another room.");
-            pause();
-
-            currentRoom = redRoom;
-            redRoomLoop();
-        } else {
-            System.out.println("You try the door, but it is locked.");
-            pause();
-        }
-    }
-
-    // ---------------- RED ROOM ----------------
-    private void redRoomLoop() {
-        while (running && currentRoom == redRoom) {
-            clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the padded walls and floor");
-            System.out.println("2. Check the dark wooden door");
-            System.out.println("3. Go through the white door");
-            System.out.println("4. Go through the blue door");
-            System.out.println("5. Go back to the dark cell");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectRedRoom();
-            } else if (choice.equals("2")) {
-                checkWoodenDoor();
-            } else if (choice.equals("3")) {
-                goToWhiteRoom();
-            } else if (choice.equals("4")) {
-                goToBlueDoor();
-            } else if (choice.equals("5")) {
-                goBackToCell();
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
-    }
-
-    private void inspectRedRoom() {
-        clearScreen();
-        System.out.println("You press your hand into the padded wall and step across the floor.");
-        System.out.println("Each touch makes a wet, mushy noise.");
-        System.out.println("Thick red liquid slowly oozes out from the padding.");
-        System.out.println("The single hanging light sways above you, making the room feel even worse.");
-        pause();
-    }
-
-    private void checkWoodenDoor() {
-        clearScreen();
-
-        if (hasCrank) {
-            System.out.println("You walk up to the dark wooden door.");
-            System.out.println("You place the crank into the square hole and begin to turn it.");
-            System.out.println("The mechanism grinds loudly, then the door slowly opens.");
-            System.out.println("You step through into the next room.");
-            pause();
-
-            currentRoom = nextRoom;
-            nextRoomLoop();
-        } else {
-            System.out.println("You walk up to the dark wooden door.");
-            System.out.println("It is locked.");
-            System.out.println("Instead of a normal knob, it has a square crank hole attached to it.");
-            pause();
-        }
-    }
-
-    private void goToWhiteRoom() {
-        currentRoom = whiteRoom;
-        whiteRoomLoop();
-    }
-
-    private void goToBlueDoor() {
-        clearScreen();
-
-        if (!hasFlashlight) {
-            System.out.println("You open the blue door and look inside.");
-            System.out.println("The room is completely dark.");
-            System.out.println("You can barely tell it is blue from the dim red light behind you.");
-            System.out.println("Without a flashlight, it is too dangerous to go in.");
-            pause();
             return;
         }
 
-        currentRoom = blueRoom;
-        blueRoomLoop();
-    }
-
-    private void goBackToCell() {
-        currentRoom = darkCell;
-    }
-
-    // ---------------- WHITE ROOM ----------------
-    private void whiteRoomLoop() {
-        while (running && currentRoom == whiteRoom) {
-            clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the sink");
-            System.out.println("2. Inspect the toilet");
-            System.out.println("3. Inspect the bathtub");
-            System.out.println("4. Go back to the red padded room");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectSink();
-            } else if (choice.equals("2")) {
-                inspectToilet();
-            } else if (choice.equals("3")) {
-                inspectBathtub();
-            } else if (choice.equals("4")) {
-                currentRoom = redRoom;
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
-    }
-
-    private void inspectSink() {
-        clearScreen();
-        System.out.println("You inspect the sink.");
-        System.out.println("It is spotless. Sitting near it is a plain cup.");
-
-        if (!hasCup) {
-            System.out.println("\n1. Take the cup");
-            System.out.println("2. Leave it");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                hasCup = true;
-                System.out.println("You take the cup.");
-            } else {
-                System.out.println("You leave the cup where it is.");
-            }
-            pause();
+        if (room == redRoom && t.equals("blue") && blueFlooded) {
+            System.out.println("The blue room door is slammed shut now.");
             return;
         }
 
-        if (!cupFilled) {
-            System.out.println("\n1. Fill the cup with water");
-            System.out.println("2. Leave the sink");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
+        Room next = room.getExit(t);
+        if (next != null) {
+            if (next == blueRoom && !hasItem("flashlight")) {
+                System.out.println("The blue room is too dark to safely enter without the flashlight.");
+                return;
+            }
 
-            if (choice.equals("1")) {
+            player.setCurrentRoom(next);
+            roomJustChanged = true;
+        } else {
+            System.out.println("You cannot go there.");
+        }
+    }
+
+    private void handleGet(String target) {
+        if (target.isEmpty()) {
+            System.out.println("Get what?");
+            return;
+        }
+
+        Room room = player.getCurrentRoom();
+        Item item = room.removeitem(target);
+
+        if (item == null) {
+            System.out.println("That item is not here.");
+            return;
+        }
+
+        if (item.getType().equalsIgnoreCase("object")) {
+            room.addItem(item);
+            System.out.println("You cannot carry that.");
+            return;
+        }
+
+        player.getItem(item);
+
+        if (item.getName().equalsIgnoreCase("keycard")) {
+            keycardTaken = true;
+        }
+
+        System.out.println("You picked up the " + item.getName() + ".");
+    }
+
+    private void handleDrop(String target) {
+        if (target.isEmpty()) {
+            System.out.println("Drop what?");
+            return;
+        }
+
+        Item item = removeInventoryItem(target);
+        if (item == null) {
+            System.out.println("You do not have that item.");
+            return;
+        }
+
+        if (item.getName().equalsIgnoreCase("flashlight")) {
+            System.out.println("You probably should keep that.");
+            player.getItem(item);
+            return;
+        }
+
+        player.getCurrentRoom().addItem(item);
+
+        if (item.getName().equalsIgnoreCase("cup")) {
+            cupFilled = false;
+        }
+
+        System.out.println("You dropped the " + item.getName() + ".");
+    }
+
+    private void handleUse(String target) {
+        if (target.isEmpty()) {
+            System.out.println("Use what?");
+            return;
+        }
+
+        Room room = player.getCurrentRoom();
+        String t = target.toLowerCase();
+
+        if (room == whiteRoom && t.equals("sink")) {
+            if (hasItem("cup")) {
                 cupFilled = true;
                 System.out.println("You fill the cup with water.");
             } else {
-                System.out.println("You step away from the sink.");
+                System.out.println("You need the cup first.");
             }
-        } else {
-            System.out.println("You already have the cup, and it is filled with water.");
+            return;
         }
 
-        pause();
-    }
-
-    private void inspectToilet() {
-        clearScreen();
-        System.out.println("You inspect the toilet. It is perfectly clean.");
-
-        if (!toiletFlushed) {
-            System.out.println("\n1. Flush the toilet");
-            System.out.println("2. Leave it alone");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
+        if (room == whiteRoom && t.equals("toilet")) {
+            if (!toiletFlushed) {
                 toiletFlushed = true;
                 System.out.println("You flush the toilet.");
-                System.out.println("Inside the tank, something rattles.");
-                System.out.println("It almost sounds like a chain.");
+                System.out.println("The tank rattles, almost like a chain sound.");
             } else {
-                System.out.println("You leave the toilet alone.");
+                System.out.println("You already flushed the toilet.");
             }
-
-            pause();
             return;
         }
 
-        if (!tankOpened) {
-            System.out.println("\n1. Open the tank");
-            System.out.println("2. Leave it alone");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
+        if (room == whiteRoom && t.equals("tank")) {
+            if (!toiletFlushed) {
+                System.out.println("You should flush the toilet first.");
+            } else if (!tankOpened) {
                 tankOpened = true;
-                System.out.println("You lift the tank lid.");
-                System.out.println("Inside, you see a hollow tube.");
+                System.out.println("You open the tank and see a hollow tube inside.");
             } else {
-                System.out.println("You leave the toilet alone.");
+                System.out.println("The tank is already open.");
             }
-
-            pause();
             return;
         }
 
-        if (tankOpened && !hasMagnetChain) {
-            System.out.println("Inside the tank is the hollow tube.");
-
-            if (cupFilled) {
-                System.out.println("\n1. Pour the cup of water into the tube");
-                System.out.println("2. Leave it alone");
-                System.out.print("Choose an option: ");
-                String choice = input.nextLine();
-
-                if (choice.equals("1")) {
-                    hasMagnetChain = true;
-                    cupFilled = false;
-                    System.out.println("You pour the water into the tube.");
-                    System.out.println("A hidden chain rises up from inside it.");
-                    System.out.println("Attached to the end is a magnet.");
-                    System.out.println("You take the chain and magnet.");
-                } else {
-                    System.out.println("You leave the tank alone.");
-                }
+        if (room == whiteRoom && (t.equals("tube") || t.equals("cup tube") || t.equals("cup to tube"))) {
+            if (!tankOpened) {
+                System.out.println("You need to open the toilet tank first.");
+            } else if (!hasItem("cup")) {
+                System.out.println("You need the cup.");
+            } else if (!cupFilled) {
+                System.out.println("The cup is empty.");
+            } else if (!magnetRevealed) {
+                magnetRevealed = true;
+                whiteRoom.addItem(magnetChain);
+                cupFilled = false;
+                System.out.println("You pour the water into the tube.");
+                System.out.println("A hidden chain rises up from inside it.");
+                System.out.println("A magnet is attached to the end.");
             } else {
-                System.out.println("It looks like something might happen if liquid was poured into the tube.");
+                System.out.println("You already pulled the chain up.");
             }
-
-            pause();
             return;
         }
 
-        System.out.println("The toilet tank is open, and you already took the chain with the magnet.");
-        pause();
+        if (room == whiteRoom && (t.equals("bathtub") || t.equals("tub"))) {
+            if (!bathtubChecked) {
+                bathtubChecked = true;
+                System.out.println("You turn the bathtub on for a second and then turn it off.");
+                System.out.println("The water drains very slowly, like something is stuck in the drain.");
+            } else {
+                System.out.println("The drain still looks clogged.");
+            }
+            return;
+        }
+
+        if (room == whiteRoom && (t.equals("drain") || t.equals("magnet drain") || t.equals("magnet on drain"))) {
+            if (!bathtubChecked) {
+                System.out.println("You have no reason to do that yet.");
+            } else if (!hasItem("magnet chain")) {
+                System.out.println("You need the magnet chain.");
+            } else if (!drainKeyRevealed) {
+                drainKeyRevealed = true;
+                whiteRoom.addItem(drainKey);
+                System.out.println("You lower the magnet into the drain and pull up a key.");
+            } else {
+                System.out.println("You already pulled something out of the drain.");
+            }
+            return;
+        }
+
+        if (room == blueRoom && t.equals("chest")) {
+            if (!hasItem("drain key")) {
+                System.out.println("The chest is locked.");
+            } else if (!chestOpened) {
+                chestOpened = true;
+                blueRoom.addItem(hammer);
+                System.out.println("You unlock the pirate chest.");
+                System.out.println("Inside is a hammer.");
+            } else {
+                System.out.println("The chest is already open.");
+            }
+            return;
+        }
+
+        if (room == blueRoom && (t.equals("tank") || t.equals("hammer tank") || t.equals("hammer fish tank"))) {
+            if (!hasItem("hammer")) {
+                System.out.println("You do not have anything to break the tank with.");
+            } else if (!blueFlooded) {
+                blueFlooded = true;
+                crankTaken = true;
+                player.getItem(crank);
+                player.setCurrentRoom(redRoom);
+                roomJustChanged = true;
+                System.out.println("You smash the fish tank with the hammer.");
+                System.out.println("The rest of the tanks break too and flood the room.");
+                System.out.println("You barely escape back to the red room.");
+                System.out.println("The blue door slams shut behind you.");
+                System.out.println("You notice the crank beside you and take it.");
+            } else {
+                System.out.println("The room is already flooded and sealed.");
+            }
+            return;
+        }
+
+        if (room == greyRoom && (t.equals("scanner") || t.equals("hand scanner"))) {
+            greyDoorUnlocked = true;
+            System.out.println("You place your hand on the scanner.");
+            System.out.println("It flashes green and unlocks the metal door.");
+            return;
+        }
+
+        if (room == lobbyRoom && (t.equals("keycard") || t.equals("keycard exit"))) {
+            if (hasItem("keycard")) {
+                player.setCurrentRoom(wireRoom);
+                roomJustChanged = true;
+                System.out.println("You slide the keycard through the reader.");
+            } else {
+                System.out.println("You do not have a keycard.");
+            }
+            return;
+        }
+
+        if (room == wireRoom && (t.equals("wires") || t.equals("pliers wires") || t.equals("pliers on wires"))) {
+            if (!hasItem("pliers")) {
+                System.out.println("You need the pliers.");
+            } else if (!bombStarted) {
+                bombStarted = true;
+                bombEndTimeMillis = System.currentTimeMillis() + 120000L;
+                System.out.println("You use the pliers on one of the wires.");
+                System.out.println("The machine sparks.");
+                System.out.println("The LED screen lights up and says: \"The key is green\"");
+                System.out.println("A timer starts counting down from 2 minutes.");
+                System.out.println("You need to get back to the first room, check the dead body, get the green key, and escape.");
+                showBombTimeRemaining();
+            } else {
+                System.out.println("The screen still says: \"The key is green\"");
+                showBombTimeRemaining();
+            }
+            return;
+        }
+
+        if (room == lionRoom && (t.equals("lion") || t.equals("knife lion") || t.equals("knife on lion"))) {
+            enterLionCage();
+            return;
+        }
+
+        System.out.println("Nothing happens.");
     }
 
-    private void inspectBathtub() {
-        clearScreen();
-        System.out.println("You inspect the bathtub.");
+    private void handleSnakeAnswer(String input) {
+        String answer = input.trim().toLowerCase();
 
-        if (!tubTurnedOn) {
-            System.out.println("\n1. Turn the bathtub on for a second");
-            System.out.println("2. Leave it alone");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                tubTurnedOn = true;
-                System.out.println("You turn the water on for a moment, then shut it back off.");
-                System.out.println("The water drains very slowly.");
-                System.out.println("It looks like something is stuck in the drain.");
-            } else {
-                System.out.println("You leave the bathtub alone.");
-            }
-
-            pause();
-            return;
-        }
-
-        if (tubTurnedOn && !hasDrainKey) {
-            if (hasMagnetChain) {
-                System.out.println("\n1. Lower the magnet on the chain into the drain");
-                System.out.println("2. Leave the bathtub alone");
-                System.out.print("Choose an option: ");
-                String choice = input.nextLine();
-
-                if (choice.equals("1")) {
-                    hasDrainKey = true;
-                    System.out.println("You lower the magnet into the drain and slowly pull it back up.");
-                    System.out.println("A key is attached to it.");
-                    System.out.println("You take the key.");
-                } else {
-                    System.out.println("You leave the bathtub alone.");
-                }
-            } else {
-                System.out.println("Something is definitely stuck in the drain.");
-                System.out.println("You might need some way to pull it out.");
-            }
-
-            pause();
-            return;
-        }
-
-        System.out.println("The drain is clear now. You already took the key from it.");
-        pause();
-    }
-
-    // ---------------- BLUE ROOM ----------------
-    private void blueRoomLoop() {
-        while (running && currentRoom == blueRoom) {
-            clearScreen();
-
-            if (!blueRoomEntered) {
-                System.out.println("=== Blue Room Entrance ===");
-                System.out.println("The second you step in, the room is almost completely dark.");
-                System.out.println("You can only tell the room is blue from the dim red light behind you.");
-                System.out.println("You switch on your flashlight and step farther inside.");
-                System.out.println("The beam reveals twelve glass fish tanks, all decorated and full of sea life.");
-                System.out.println("On the far side in the center is a fish tank with a strange metal object inside.");
-                System.out.println("To your right in the corner is a small pirate chest with a keyhole.");
-                blueRoomEntered = true;
-                pause();
-            }
-
-            clearScreen();
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the special fish tank");
-            System.out.println("2. Inspect the pirate chest");
-            System.out.println("3. Go back to the red padded room");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectFishTank();
-            } else if (choice.equals("2")) {
-                inspectPirateChest();
-            } else if (choice.equals("3")) {
-                currentRoom = redRoom;
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
+        if (answer.equals("nmu")
+                || answer.equals("northern michigan")
+                || answer.equals("northern michigan university")) {
+            snakeQuestionActive = false;
+            player.setCurrentRoom(greyRoom);
+            roomJustChanged = true;
+            System.out.println("You hear a slithering sound as the eyes dart back and disappear.");
+            System.out.println("The lights turn on.");
+            showRoomOptions();
+        } else {
+            System.out.println("The eyes lunge forward.");
+            System.out.println("A giant snake bursts from the darkness and eats you.");
+            triggerDeath();
         }
     }
 
-    private void inspectFishTank() {
-        clearScreen();
+    private void handleDeathChoice(String input) {
+        String choice = input.trim().toLowerCase();
 
-        if (!tankBroken) {
-            System.out.println("You walk up to the special fish tank.");
-            System.out.println("Inside, you can now clearly see a crank handle.");
-            System.out.println("It looks like it would fit perfectly into the square hole on the wooden door in the red room.");
-            System.out.println("But there does not seem to be any safe way to open the tank.");
-
-            if (hasHammer) {
-                System.out.println("\n1. Break the fish tank with the hammer");
-                System.out.println("2. Leave it alone");
-                System.out.print("Choose an option: ");
-                String choice = input.nextLine();
-
-                if (choice.equals("1")) {
-                    tankBroken = true;
-                    hasCrank = true;
-
-                    System.out.println("You swing the hammer into the glass.");
-                    System.out.println("The special tank shatters.");
-                    System.out.println("For some reason, the other fish tanks all crack and explode too.");
-                    System.out.println("Water rushes across the room as the tanks empty all at once.");
-                    System.out.println("You nearly drown, but barely manage to swim back toward the red room.");
-                    System.out.println("You throw yourself through the doorway just as the blue room door slams shut behind you.");
-                    System.out.println("You look down and see the crank lying next to you.");
-                    System.out.println("You pick up the crank.");
-                    pause();
-
-                    currentRoom = redRoom;
-                } else {
-                    System.out.println("You step away from the tank.");
-                    pause();
-                }
-            } else {
-                System.out.println("You do not have any way to break the glass.");
-                pause();
-            }
-
-            return;
+        if (choice.equals("restart") || choice.equals("1")) {
+            setupWorld();
+            startGame();
+        } else if (choice.equals("load") || choice.equals("load save") || choice.equals("2")) {
+            restoreGame();
+        } else {
+            System.out.println("Type RESTART or LOAD.");
         }
-
-        System.out.println("The blue room is flooded and sealed shut now.");
-        System.out.println("You already got the crank out.");
-        pause();
     }
 
-    private void inspectPirateChest() {
-        clearScreen();
-
-        if (!hasDrainKey) {
-            System.out.println("You kneel by the pirate chest.");
-            System.out.println("It is locked.");
-            System.out.println("You need a key to open it.");
-            pause();
-            return;
-        }
-
-        if (!chestOpened) {
-            System.out.println("You use the key from the bathtub drain to unlock the chest.");
-            System.out.println("Inside is a hammer.");
-            chestOpened = true;
-
-            System.out.println("\n1. Take the hammer");
-            System.out.println("2. Leave it");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                hasHammer = true;
-                System.out.println("You take the hammer.");
-            } else {
-                System.out.println("You leave the hammer in the chest.");
-            }
-
-            pause();
-            return;
-        }
-
-        if (!hasHammer) {
-            System.out.println("The chest is open. The hammer is still inside.");
-
-            System.out.println("\n1. Take the hammer");
-            System.out.println("2. Leave it");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                hasHammer = true;
-                System.out.println("You take the hammer.");
-            } else {
-                System.out.println("You leave the hammer in the chest.");
-            }
-
-            pause();
-            return;
-        }
-
-        System.out.println("The chest is open and empty.");
-        pause();
-    }
-
-    // ---------------- COLD DARK ROOM ----------------
-    private void nextRoomLoop() {
-        clearScreen();
-        System.out.println("=== Cold Dark Room ===");
+    private void enterSnakeRoom() {
+        snakeQuestionActive = true;
+        flashlightDead = true;
         System.out.println("You step into a very cold and dark room.");
         System.out.println("It is so dark that you cannot even see your own face in front of you.");
         System.out.println("The door behind you closes and plunges you into total darkness.");
-        System.out.println("You try your flashlight, but it only flickers for a second and dies.");
-        pause();
-
-        clearScreen();
-        System.out.println("Two dark red eyes appear in the darkness in front of you.");
+        System.out.println("You try your flashlight but it flickers for a second and dies.");
+        System.out.println("Suddenly a pair of dark red eyes appear in front of you.");
         System.out.println("\"What is the worst university in the entire world?\"");
-        System.out.print("Enter your answer: ");
-
-        String answer = input.nextLine().trim();
-
-        if (isCorrectRiddleAnswer(answer)) {
-            clearScreen();
-            System.out.println("The eyes stare at you for a moment.");
-            System.out.println("Then you hear a slithering sound as they dart back and disappear.");
-            System.out.println("A second later, the lights turn on.");
-            System.out.println("You are now standing in a plain grey room.");
-            System.out.println("At the other end is a metal door.");
-            System.out.println("In the corner is a strange giant hole.");
-            riddlePassed = true;
-            currentRoom = greyRoom;
-            pause();
-            greyRoomLoop();
-        } else {
-            clearScreen();
-            System.out.println("The eyes suddenly lunge forward.");
-            System.out.println("A giant snake bursts from the darkness.");
-            System.out.println("Before you can react, it wraps around you and eats you.");
-            pause();
-            deathMenu();
-        }
-    }
-
-    private boolean isCorrectRiddleAnswer(String answer) {
-        String lower = answer.toLowerCase();
-        return lower.equals("nmu")
-                || lower.equals("northern michigan")
-                || lower.equals("northern michigan university");
-    }
-
-    // ---------------- GREY ROOM ----------------
-    private void greyRoomLoop() {
-        while (running && currentRoom == greyRoom) {
-            clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the metal door");
-            System.out.println("2. Inspect the giant hole");
-            System.out.println("3. Put your hand on the scanner");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectMetalDoor();
-            } else if (choice.equals("2")) {
-                inspectGiantHole();
-            } else if (choice.equals("3")) {
-                useHandScanner();
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
-    }
-
-    private void inspectMetalDoor() {
-        clearScreen();
-
-        if (scannerUnlocked) {
-            System.out.println("You walk up to the metal door.");
-            System.out.println("The scanner beside it is green now.");
-            System.out.println("The door is unlocked.");
-
-            System.out.println("\n1. Go through the door");
-            System.out.println("2. Step away");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                clearScreen();
-                System.out.println("You open the metal door and step into the next room.");
-                pause();
-                currentRoom = lobbyRoom;
-                lobbyLoop();
-            } else {
-                System.out.println("You step away from the door.");
-                pause();
-            }
-        } else {
-            System.out.println("You walk up to the metal door.");
-            System.out.println("It is locked.");
-            System.out.println("Next to it is a hand scanner.");
-            pause();
-        }
-    }
-
-    private void inspectGiantHole() {
-        clearScreen();
-        System.out.println("You walk over to the giant hole in the corner.");
-        System.out.println("It is deep and dark.");
-        System.out.println("You cannot see the bottom.");
-        System.out.println("Cold air drifts up from inside it.");
-        pause();
-    }
-
-    private void useHandScanner() {
-        clearScreen();
-        System.out.println("You place your hand on the scanner.");
-        System.out.println("It beeps, flashes green, and the metal door unlocks.");
-        scannerUnlocked = true;
-        pause();
-    }
-
-    // ---------------- LOBBY ROOM ----------------
-    private void lobbyLoop() {
-        while (running && currentRoom == lobbyRoom) {
-            clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the exit door");
-            System.out.println("2. Go through the purple door");
-            System.out.println("3. Go through the wooden door");
-            System.out.println("4. Inspect the front desk");
-            System.out.println("5. Inspect the couches and chairs");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectExitDoor();
-            } else if (choice.equals("2")) {
-                goToLionRoom();
-            } else if (choice.equals("3")) {
-                goToSupplyCloset();
-            } else if (choice.equals("4")) {
-                inspectFrontDesk();
-            } else if (choice.equals("5")) {
-                inspectLobbyFurniture();
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
-    }
-
-    private void inspectExitDoor() {
-        clearScreen();
-
-        if (hasLionKeycard) {
-            System.out.println("You walk up to the door under the exit sign.");
-            System.out.println("There is a keycard slot next to it.");
-
-            System.out.println("\n1. Use the keycard");
-            System.out.println("2. Step away");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                System.out.println("You slide the keycard into the reader.");
-                System.out.println("The light flashes and the door unlocks.");
-                pause();
-                currentRoom = wireRoom;
-                wireRoomLoop();
-            } else {
-                System.out.println("You step away from the door.");
-                pause();
-            }
-        } else {
-            System.out.println("You walk up to the door under the exit sign.");
-            System.out.println("It has a keycard slot next to it.");
-            System.out.println("You need a keycard to open it.");
-            pause();
-        }
-    }
-
-    private void goToLionRoom() {
-        currentRoom = lionRoom;
-        lionRoomLoop();
-    }
-
-    private void goToSupplyCloset() {
-        currentRoom = supplyCloset;
-        supplyClosetLoop();
-    }
-
-    private void inspectFrontDesk() {
-        clearScreen();
-        System.out.println("You inspect the front desk.");
-        System.out.println("It looks neat, but there is nothing useful on it.");
-        pause();
-    }
-
-    private void inspectLobbyFurniture() {
-        clearScreen();
-        System.out.println("You inspect the couches and chairs.");
-        System.out.println("They look clean and comfortable, but there is nothing hidden in them.");
-        pause();
-    }
-
-    // ---------------- LION ROOM ----------------
-    private void lionRoomLoop() {
-        while (running && currentRoom == lionRoom) {
-            clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the lion cage");
-            System.out.println("2. Try to enter the cage");
-            System.out.println("3. Go back to the lobby");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectLionCage();
-            } else if (choice.equals("2")) {
-                enterLionCage();
-            } else if (choice.equals("3")) {
-                currentRoom = lobbyRoom;
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
-    }
-
-    private void inspectLionCage() {
-        clearScreen();
-        System.out.println("You look closely at the large cage.");
-        System.out.println("Inside is a massive lion pacing back and forth.");
-        System.out.println("Behind it is a dead body.");
-        System.out.println("In the dead body's hand, you can clearly see a keycard.");
-        pause();
+        System.out.println("Type your answer.");
     }
 
     private void enterLionCage() {
-        clearScreen();
-
-        if (hasLionKeycard) {
-            System.out.println("You already got the keycard from the cage.");
-            pause();
+        if (keycardTaken) {
+            System.out.println("You already grabbed the keycard.");
             return;
         }
 
-        if (hasKnife) {
-            System.out.println("You grip the knife and step into the cage.");
-            System.out.println("The lion lunges at you.");
-            System.out.println("You slash at it and manage to hurt it just enough to get past.");
-            System.out.println("You grab the keycard from the dead body's hand and run for your life.");
-            System.out.println("You barely escape the cage.");
-            System.out.println("As you escape, the knife snaps and breaks.");
-            hasLionKeycard = true;
-            hasKnife = false;
+        if (hasItem("knife")) {
+            removeInventoryItem("knife");
             knifeBroken = true;
-            pause();
+            keycardTaken = true;
+            lionRoom.addItem(keycard);
+            System.out.println("You rush into the cage with the knife.");
+            System.out.println("You manage to hurt the lion just enough to grab the keycard.");
+            System.out.println("You barely escape, but the knife breaks.");
+        } else {
+            System.out.println("You try to go into the cage.");
+            System.out.println("The lion kills you.");
+            triggerDeath();
+        }
+    }
+
+    private void triggerDeath() {
+        deathChoiceActive = true;
+        System.out.println();
+        System.out.println("You died.");
+        System.out.println("Type RESTART or LOAD.");
+    }
+
+    private void checkBombTimer() {
+        if (!bombStarted || won || deathChoiceActive) {
             return;
         }
 
-        System.out.println("You step into the cage.");
-        System.out.println("The lion instantly attacks.");
-        System.out.println("Before you can get away, it kills you.");
-        pause();
-        deathMenu();
-    }
-
-    // ---------------- SUPPLY CLOSET ----------------
-    private void supplyClosetLoop() {
-        while (running && currentRoom == supplyCloset) {
+        long timeLeft = bombEndTimeMillis - System.currentTimeMillis();
+        if (timeLeft <= 0) {
+            bombStarted = false;
             clearScreen();
-
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the toolbox");
-            System.out.println("2. Inspect the knife on the wall");
-            System.out.println("3. Go back to the lobby");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectToolbox();
-            } else if (choice.equals("2")) {
-                inspectWallKnife();
-            } else if (choice.equals("3")) {
-                currentRoom = lobbyRoom;
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
+            System.out.println("The timer reaches zero.");
+            System.out.println("The bomb goes off.");
+            triggerDeath();
         }
     }
 
-    private void inspectToolbox() {
-        clearScreen();
-
-        if (!toolboxOpened) {
-            System.out.println("You open the toolbox.");
-            System.out.println("Inside you find a pair of pliers.");
-            toolboxOpened = true;
-        } else {
-            System.out.println("The toolbox is already open.");
-            System.out.println("Inside is a pair of pliers.");
+    private void showBombTimeRemaining() {
+        if (!bombStarted) {
+            return;
         }
 
-        if (!hasPliers) {
-            System.out.println("\n1. Take the pliers");
-            System.out.println("2. Leave them");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                hasPliers = true;
-                System.out.println("You take the pliers.");
-            } else {
-                System.out.println("You leave the pliers in the toolbox.");
-            }
-        } else {
-            System.out.println("You already took the pliers.");
+        long timeLeft = bombEndTimeMillis - System.currentTimeMillis();
+        if (timeLeft < 0) {
+            timeLeft = 0;
         }
 
-        pause();
+        long seconds = timeLeft / 1000;
+        long minutesPart = seconds / 60;
+        long secondsPart = seconds % 60;
+
+        System.out.println("Time left: " + minutesPart + ":" + String.format("%02d", secondsPart));
     }
 
-    private void inspectWallKnife() {
-        clearScreen();
-
-        if (!hasKnife && !knifeBroken) {
-            System.out.println("A knife hangs on the wall near the door.");
-
-            System.out.println("\n1. Take the knife");
-            System.out.println("2. Leave it");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                hasKnife = true;
-                System.out.println("You take the knife.");
-            } else {
-                System.out.println("You leave the knife on the wall.");
-            }
-        } else if (hasKnife) {
-            System.out.println("You already took the knife.");
-        } else {
-            System.out.println("The knife used to hang here, but it broke when you used it on the lion.");
+    private void showRoomOptions() {
+        checkBombTimer();
+        if (!running || deathChoiceActive) {
+            return;
         }
 
-        pause();
+        Room room = player.getCurrentRoom();
+        System.out.println(room.getDescription());
+        System.out.println();
+        showCommandListsOnly();
     }
 
-    // ---------------- WIRE ROOM ----------------
-    private void wireRoomLoop() {
-        while (running && currentRoom == wireRoom) {
+    private void showCommandListsOnly() {
+        Room room = player.getCurrentRoom();
+
+        if (bombStarted) {
+            showBombTimeRemaining();
+        }
+
+        if (room == darkCell) {
+            System.out.println("LOOK: flashlight, book, dead body, door");
+            System.out.println("GO: door");
+
+            if (bombKeyRevealed) {
+                System.out.println("GET: flashlight, key, green key");
+                System.out.println("DROP: flashlight, key, green key");
+            } else {
+                System.out.println("GET: flashlight, key");
+                System.out.println("DROP: flashlight, key");
+            }
+
+            System.out.println("USE: none");
+        } else if (room == redRoom) {
+            System.out.println("LOOK: walls, floor, wooden door");
+            System.out.println("GO: white, blue, cell, wooden door");
+            System.out.println("GET: none");
+            System.out.println("DROP: inventory items");
+            System.out.println("USE: none");
+        } else if (room == whiteRoom) {
+            System.out.println("LOOK: sink, toilet, tank, bathtub");
+            System.out.println("GO: red, back");
+            System.out.println("GET: cup, magnet chain, drain key");
+            System.out.println("DROP: cup, magnet chain, drain key");
+            System.out.println("USE: sink, toilet, tank, tube, bathtub, drain");
+        } else if (room == blueRoom) {
+            System.out.println("LOOK: fish tank, chest");
+            System.out.println("GO: red, back");
+            System.out.println("GET: hammer, crank");
+            System.out.println("DROP: hammer, crank");
+            System.out.println("USE: chest, tank");
+        } else if (room == greyRoom) {
+            System.out.println("LOOK: hole, metal door, scanner");
+            System.out.println("GO: metal door, back");
+            System.out.println("GET: none");
+            System.out.println("DROP: inventory items");
+            System.out.println("USE: scanner");
+        } else if (room == lobbyRoom) {
+            System.out.println("LOOK: exit door, front desk, couches, chairs");
+            System.out.println("GO: purple, wooden, exit door, back");
+            System.out.println("GET: none");
+            System.out.println("DROP: inventory items");
+            System.out.println("USE: keycard");
+        } else if (room == lionRoom) {
+            System.out.println("LOOK: lion, cage, lion cage");
+            System.out.println("GO: cage, back");
+            System.out.println("GET: keycard");
+            System.out.println("DROP: inventory items");
+            System.out.println("USE: lion");
+        } else if (room == supplyCloset) {
+            System.out.println("LOOK: toolbox, knife");
+            System.out.println("GO: back");
+            System.out.println("GET: knife, pliers");
+            System.out.println("DROP: knife, pliers");
+            System.out.println("USE: none");
+        } else if (room == wireRoom) {
+            System.out.println("LOOK: table, wires, escape door");
+            System.out.println("GO: escape door, back");
+            System.out.println("GET: none");
+            System.out.println("DROP: inventory items");
+            System.out.println("USE: wires");
+        } else if (room == escapeRoom) {
+            System.out.println("LOOK: outside");
+            System.out.println("GO: none");
+            System.out.println("GET: none");
+            System.out.println("DROP: none");
+            System.out.println("USE: none");
+        }
+
+        System.out.println("COMMANDS: LOOK, GO, GET, DROP, INVENTORY, SAVE, RESTORE, QUIT");
+        showInventoryHint();
+    }
+
+    private void showInventoryHint() {
+        ArrayList<Item> inv = player.getCurrentInventory();
+        System.out.print("INVENTORY: ");
+
+        if (inv.isEmpty()) {
+            System.out.println("empty");
+            return;
+        }
+
+        for (int i = 0; i < inv.size(); i++) {
+            System.out.print(inv.get(i).getName());
+            if (i < inv.size() - 1) {
+                System.out.print(", ");
+            }
+        }
+        System.out.println();
+    }
+
+    private void showInventory() {
+        ArrayList<Item> inv = player.getCurrentInventory();
+
+        if (inv.isEmpty()) {
+            System.out.println("Your inventory is empty.");
+            return;
+        }
+
+        System.out.println("You are carrying:");
+        for (Item item : inv) {
+            System.out.println("- " + item.getName());
+        }
+    }
+
+    private boolean hasItem(String name) {
+        for (Item item : player.getCurrentInventory()) {
+            if (item.getName().equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Item removeInventoryItem(String name) {
+        ArrayList<Item> inv = player.getCurrentInventory();
+
+        for (int i = 0; i < inv.size(); i++) {
+            if (inv.get(i).getName().equalsIgnoreCase(name)) {
+                return inv.remove(i);
+            }
+        }
+        return null;
+    }
+
+    private Item findItemInInventory(String name) {
+        for (Item item : player.getCurrentInventory()) {
+            if (item.getName().equalsIgnoreCase(name)) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private void saveGame() {
+        try (PrintWriter out = new PrintWriter(new FileWriter("save.txt"))) {
+            out.println("room=" + player.getCurrentRoom().getName());
+            out.println("keyRevealed=" + keyRevealed);
+            out.println("flashlightDead=" + flashlightDead);
+            out.println("toiletFlushed=" + toiletFlushed);
+            out.println("tankOpened=" + tankOpened);
+            out.println("cupFilled=" + cupFilled);
+            out.println("magnetRevealed=" + magnetRevealed);
+            out.println("bathtubChecked=" + bathtubChecked);
+            out.println("drainKeyRevealed=" + drainKeyRevealed);
+            out.println("chestOpened=" + chestOpened);
+            out.println("blueFlooded=" + blueFlooded);
+            out.println("crankTaken=" + crankTaken);
+            out.println("greyDoorUnlocked=" + greyDoorUnlocked);
+            out.println("knifeBroken=" + knifeBroken);
+            out.println("toolboxOpened=" + toolboxOpened);
+            out.println("keycardTaken=" + keycardTaken);
+            out.println("bombStarted=" + bombStarted);
+            out.println("bombKeyRevealed=" + bombKeyRevealed);
+
+            long remaining = 0L;
+            if (bombStarted) {
+                remaining = bombEndTimeMillis - System.currentTimeMillis();
+                if (remaining < 0) {
+                    remaining = 0L;
+                }
+            }
+            out.println("bombRemaining=" + remaining);
+
+            StringBuilder inv = new StringBuilder();
+            for (Item item : player.getCurrentInventory()) {
+                inv.append(item.getName()).append(",");
+            }
+            out.println("inventory=" + inv);
+
+            System.out.println("Game saved.");
+        } catch (IOException e) {
+            System.out.println("Could not save the game.");
+        }
+    }
+
+    private void restoreGame() {
+        setupWorld();
+
+        try (BufferedReader in = new BufferedReader(new FileReader("save.txt"))) {
+            String line;
+            String roomName = "Dark Cell";
+            String inventoryLine = "";
+            long savedBombRemaining = 0L;
+
+            while ((line = in.readLine()) != null) {
+                String[] parts = line.split("=", 2);
+                if (parts.length < 2) {
+                    continue;
+                }
+
+                String key = parts[0];
+                String value = parts[1];
+
+                switch (key) {
+                    case "room":
+                        roomName = value;
+                        break;
+                    case "keyRevealed":
+                        keyRevealed = Boolean.parseBoolean(value);
+                        break;
+                    case "flashlightDead":
+                        flashlightDead = Boolean.parseBoolean(value);
+                        break;
+                    case "toiletFlushed":
+                        toiletFlushed = Boolean.parseBoolean(value);
+                        break;
+                    case "tankOpened":
+                        tankOpened = Boolean.parseBoolean(value);
+                        break;
+                    case "cupFilled":
+                        cupFilled = Boolean.parseBoolean(value);
+                        break;
+                    case "magnetRevealed":
+                        magnetRevealed = Boolean.parseBoolean(value);
+                        break;
+                    case "bathtubChecked":
+                        bathtubChecked = Boolean.parseBoolean(value);
+                        break;
+                    case "drainKeyRevealed":
+                        drainKeyRevealed = Boolean.parseBoolean(value);
+                        break;
+                    case "chestOpened":
+                        chestOpened = Boolean.parseBoolean(value);
+                        break;
+                    case "blueFlooded":
+                        blueFlooded = Boolean.parseBoolean(value);
+                        break;
+                    case "crankTaken":
+                        crankTaken = Boolean.parseBoolean(value);
+                        break;
+                    case "greyDoorUnlocked":
+                        greyDoorUnlocked = Boolean.parseBoolean(value);
+                        break;
+                    case "knifeBroken":
+                        knifeBroken = Boolean.parseBoolean(value);
+                        break;
+                    case "toolboxOpened":
+                        toolboxOpened = Boolean.parseBoolean(value);
+                        break;
+                    case "keycardTaken":
+                        keycardTaken = Boolean.parseBoolean(value);
+                        break;
+                    case "bombStarted":
+                        bombStarted = Boolean.parseBoolean(value);
+                        break;
+                    case "bombKeyRevealed":
+                        bombKeyRevealed = Boolean.parseBoolean(value);
+                        break;
+                    case "bombRemaining":
+                        savedBombRemaining = Long.parseLong(value);
+                        break;
+                    case "inventory":
+                        inventoryLine = value;
+                        break;
+                }
+            }
+
+            clearRoomItems();
+            rebuildWorldItems();
+
+            if (!inventoryLine.isEmpty()) {
+                String[] names = inventoryLine.split(",");
+                for (String name : names) {
+                    Item item = makeItemByName(name.trim());
+                    if (item != null) {
+                        player.getItem(item);
+                    }
+                }
+            }
+
+            player.setCurrentRoom(roomByName(roomName));
+
+            if (bombStarted) {
+                bombEndTimeMillis = System.currentTimeMillis() + savedBombRemaining;
+            }
+
+            running = true;
+            deathChoiceActive = false;
+            snakeQuestionActive = false;
+            roomJustChanged = false;
+
             clearScreen();
+            System.out.println("Game restored.");
+            System.out.println();
+            showRoomOptions();
 
-            System.out.println("=== " + currentRoom.getName() + " ===");
-            System.out.println(currentRoom.getDescription());
-
-            System.out.println("\nWhat do you want to do?");
-            System.out.println("1. Inspect the escape door");
-            System.out.println("2. Inspect the table with wires");
-            System.out.println("3. Go back to the lobby");
-
-            System.out.print("Enter option number: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                inspectEscapeDoor();
-            } else if (choice.equals("2")) {
-                inspectWireTable();
-            } else if (choice.equals("3")) {
-                currentRoom = lobbyRoom;
-            } else {
-                clearScreen();
-                System.out.println("Invalid option.");
-                pause();
-            }
+        } catch (IOException e) {
+            System.out.println("Could not restore the game.");
         }
     }
 
-    private void inspectEscapeDoor() {
-        clearScreen();
-        System.out.println("You look through the window in the door.");
-        System.out.println("You can see that this door leads to your escape.");
-        System.out.println("But right now it will not open.");
-        pause();
+    private void clearRoomItems() {
+        darkCell.getItem().clear();
+        redRoom.getItem().clear();
+        whiteRoom.getItem().clear();
+        blueRoom.getItem().clear();
+        coldDarkRoom.getItem().clear();
+        greyRoom.getItem().clear();
+        lobbyRoom.getItem().clear();
+        lionRoom.getItem().clear();
+        supplyCloset.getItem().clear();
+        wireRoom.getItem().clear();
+        escapeRoom.getItem().clear();
     }
 
-    private void inspectWireTable() {
-        clearScreen();
-        System.out.println("You inspect the table.");
-        System.out.println("There is a mess of wires attached to some weird metal and a small LED screen.");
-
-        if (hasPliers && !greenMessageShown) {
-            System.out.println("\n1. Use the pliers on one of the wires");
-            System.out.println("2. Leave it alone");
-            System.out.print("Choose an option: ");
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                greenMessageShown = true;
-                System.out.println("You use the pliers on one of the wires.");
-                System.out.println("The machine sparks for a second.");
-                System.out.println("A message appears on the LED screen:");
-                System.out.println("\"The key is green\"");
-            } else {
-                System.out.println("You leave the wires alone.");
-            }
-        } else if (greenMessageShown) {
-            System.out.println("The LED screen is on.");
-            System.out.println("It says: \"The key is green\"");
-        } else {
-            System.out.println("You might need a tool to safely mess with the wires.");
+    private void rebuildWorldItems() {
+        if (!hasItem("flashlight")) {
+            darkCell.addItem(flashlight);
         }
 
-        pause();
+        darkCell.addItem(book);
+        darkCell.addItem(deadBody);
+
+        if (keyRevealed && !hasItem("key")) {
+            darkCell.addItem(cellKey);
+        }
+
+        if (bombKeyRevealed && !hasItem("green key")) {
+            darkCell.addItem(greenEscapeKey);
+        }
+
+        if (!hasItem("cup")) {
+            whiteRoom.addItem(cup);
+        }
+
+        if (magnetRevealed && !hasItem("magnet chain")) {
+            whiteRoom.addItem(magnetChain);
+        }
+
+        if (drainKeyRevealed && !hasItem("drain key")) {
+            whiteRoom.addItem(drainKey);
+        }
+
+        if (!knifeBroken && !hasItem("knife")) {
+            supplyCloset.addItem(knife);
+        }
+
+        if (toolboxOpened && !hasItem("pliers")) {
+            supplyCloset.addItem(pliers);
+        }
+
+        if (chestOpened && !hasItem("hammer")) {
+            blueRoom.addItem(hammer);
+        }
+
+        if (keycardTaken && !hasItem("keycard")) {
+            lionRoom.addItem(keycard);
+        }
     }
 
-    // ---------------- DEATH / RESTART ----------------
-    private void deathMenu() {
-        while (true) {
-            clearScreen();
-            System.out.println("=== YOU DIED ===");
-            System.out.println("1. Restart");
-            System.out.println("2. Load Save");
-            System.out.print("Choose an option: ");
+    private Room roomByName(String name) {
+        if (name.equalsIgnoreCase("Dark Cell")) return darkCell;
+        if (name.equalsIgnoreCase("Red Padded Room")) return redRoom;
+        if (name.equalsIgnoreCase("White Bathroom")) return whiteRoom;
+        if (name.equalsIgnoreCase("Blue Room")) return blueRoom;
+        if (name.equalsIgnoreCase("Cold Dark Room")) return coldDarkRoom;
+        if (name.equalsIgnoreCase("Grey Room")) return greyRoom;
+        if (name.equalsIgnoreCase("Lobby")) return lobbyRoom;
+        if (name.equalsIgnoreCase("Lion Room")) return lionRoom;
+        if (name.equalsIgnoreCase("Supply Closet")) return supplyCloset;
+        if (name.equalsIgnoreCase("Wire Room")) return wireRoom;
+        if (name.equalsIgnoreCase("Outside")) return escapeRoom;
+        return darkCell;
+    }
 
-            String choice = input.nextLine();
-
-            if (choice.equals("1")) {
-                resetGame();
-                startGame();
-                return;
-            } else if (choice.equals("2")) {
-                clearScreen();
-                System.out.println("Load save is not ready yet.");
-                System.out.println("Restarting new game instead...");
-                pause();
-                resetGame();
-                startGame();
-                return;
-            } else {
-                System.out.println("Invalid option.");
-                pause();
-            }
-        }
+    private Item makeItemByName(String name) {
+        if (name.equalsIgnoreCase("flashlight")) return new Item("flashlight", "A small flashlight. It still works.", "tool");
+        if (name.equalsIgnoreCase("key")) return new Item("key", "A small metal key hidden inside the book.", "key");
+        if (name.equalsIgnoreCase("cup")) return new Item("cup", "A plain cup from the sink.", "tool");
+        if (name.equalsIgnoreCase("magnet chain")) return new Item("magnet chain", "A chain with a magnet attached.", "tool");
+        if (name.equalsIgnoreCase("drain key")) return new Item("drain key", "A key pulled from the bathtub drain.", "key");
+        if (name.equalsIgnoreCase("hammer")) return new Item("hammer", "A sturdy hammer.", "tool");
+        if (name.equalsIgnoreCase("knife")) return new Item("knife", "A sharp knife from the wall.", "weapon");
+        if (name.equalsIgnoreCase("keycard")) return new Item("keycard", "A keycard taken from the dead body behind the lion.", "keycard");
+        if (name.equalsIgnoreCase("pliers")) return new Item("pliers", "A pair of pliers from the toolbox.", "tool");
+        if (name.equalsIgnoreCase("green key")) return new Item("green key", "A green key taken from the dead body.", "key");
+        if (name.equalsIgnoreCase("crank")) return new Item("crank", "A crank handle from the fish tank.", "tool");
+        return null;
     }
 }
